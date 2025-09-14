@@ -46,7 +46,7 @@ source install/setup.bash
 #### 1. Gazebo Simulation with ROS2 Control and MoveIt2 Motion Planning
 To launch the Gazebo simulation with ROS2 Control and MoveIt2 for motion planning, use the following command:
 ```bash
-ros2 launch bcr_arm_gazebo bcr_arm.gazebo_moveit.launch.py
+ros2 launch bcr_arm_moveit_config bcr_arm_moveit_gazebo.launch.py 
 ```
 
 #### 2. Gazebo Simulation with ROS2 Control
@@ -105,7 +105,7 @@ source install/setup.bash
 #### 1. Gazebo Simulation with ROS2 Control and MoveIt2 Motion Planning
 To launch the Gazebo simulation with ROS2 Control and MoveIt2 for motion planning, use the following command:
 ```bash
-ros2 launch bcr_arm_gazebo bcr_arm.gazebo_moveit.launch.py
+ros2 launch bcr_arm_moveit_config bcr_arm_moveit_gazebo.launch.py 
 ```
 
 #### 2. Gazebo Simulation with ROS2 Control
