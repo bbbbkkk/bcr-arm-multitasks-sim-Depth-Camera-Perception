@@ -13,6 +13,7 @@ from launch_ros.substitutions import FindPackageShare
 from moveit_configs_utils import MoveItConfigsBuilder
 from ament_index_python.packages import get_package_share_directory
 
+
 def generate_launch_description():
     declared_arguments = []
     declared_arguments.append(
@@ -26,7 +27,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
 
     bcr_arm_gazebo_pkg = FindPackageShare("bcr_arm_gazebo")
-    
+
     gazebo_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([bcr_arm_gazebo_pkg, "launch", "bcr_arm.gazebo.launch.py"])
@@ -73,7 +74,14 @@ def generate_launch_description():
         executable="rviz2",
         name="rviz2",
         output="screen",
-        arguments=["-d", os.path.join(get_package_share_directory("bcr_arm_moveit_config"), "config", "moveit.rviz")],
+        arguments=[
+            "-d",
+            os.path.join(
+                get_package_share_directory("bcr_arm_moveit_config"),
+                "config",
+                "moveit.rviz",
+            ),
+        ],
         parameters=[
             moveit_config.robot_description,
             moveit_config.robot_description_semantic,
@@ -85,19 +93,28 @@ def generate_launch_description():
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
+        arguments=[
+            "joint_state_broadcaster",
+            "--controller-manager",
+            "/controller_manager",
+        ],
         output="screen",
     )
 
     joint_trajectory_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["joint_trajectory_controller", "--controller-manager", "/controller_manager"],
+        arguments=[
+            "joint_trajectory_controller",
+            "--controller-manager",
+            "/controller_manager",
+        ],
         output="screen",
     )
 
     return LaunchDescription(
-        declared_arguments + [
+        declared_arguments
+        + [
             gazebo_launch,
             move_group_node,
             rviz_node,

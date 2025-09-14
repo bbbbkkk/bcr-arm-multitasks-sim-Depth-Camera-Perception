@@ -23,7 +23,7 @@ find_package(ros2_controllers REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(xacro REQUIRED)
 
-install (
+install(
   DIRECTORY launch models worlds
   DESTINATION share/${PROJECT_NAME}
 )

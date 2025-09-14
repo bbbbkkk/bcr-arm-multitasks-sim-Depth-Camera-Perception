@@ -8,6 +8,7 @@ from launch.actions import ExecuteProcess, TimerAction
 from ament_index_python.packages import get_package_share_directory
 from moveit_configs_utils import MoveItConfigsBuilder
 
+
 def generate_launch_description():
 
     # Command-line arguments
@@ -22,9 +23,7 @@ def generate_launch_description():
         .robot_description(
             file_path="config/bcr_arm.urdf.xacro",
             mappings={
-                "ros2_control_hardware_type": LaunchConfiguration(
-                    "ros2_control_hardware_type"
-                )
+                "ros2_control_hardware_type": LaunchConfiguration("ros2_control_hardware_type")
             },
         )
         .robot_description_semantic(file_path="config/bcr_arm.srdf")
