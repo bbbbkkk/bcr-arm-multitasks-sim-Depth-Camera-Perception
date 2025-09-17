@@ -100,9 +100,10 @@ class ArmControllerCLI(Node):
 
         self.get_logger().info(f"Sending goal: {joint_positions} to be reached in {duration_sec}s")
 
-        # future = self.action_client.send_goal_async(goal_msg)
+        self.action_client.send_goal_async(goal_msg)
 
         # Optional: Add feedback and result handling if needed
+        # future = self.action_client.send_goal_async(goal_msg)
         # rclpy.spin_until_future_complete(self, future)
         # goal_handle = future.result()
 
