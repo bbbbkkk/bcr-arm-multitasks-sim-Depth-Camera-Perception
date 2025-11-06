@@ -31,7 +31,7 @@ Other dependencies can be installed using `rosdep` (from the root directory of y
 rosdep install --from-paths src --ignore-src -r -y
 ```
 
-Build the project:
+### Source Build
 
 ```bash
 # From the root of your workspace
@@ -39,6 +39,13 @@ colcon build --symlink-install
 
 # Source the workspace
 source install/setup.bash
+```
+
+### Binary Install
+
+```bash
+# To install bcr arm binary run
+sudo apt-get install ros-humble-bcr-arm
 ```
 
 ### Launch Files
