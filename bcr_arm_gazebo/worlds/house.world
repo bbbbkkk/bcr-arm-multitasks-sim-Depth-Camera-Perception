@@ -2,9 +2,6 @@
 <sdf version="1.6">
     <world name='default'>
         <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics">
-            <engine>
-                <filename>ignition-physics-dartsim-plugin</filename>
-            </engine>
         </plugin>
         <plugin filename="ignition-gazebo-user-commands-system"
             name="ignition::gazebo::systems::UserCommands">

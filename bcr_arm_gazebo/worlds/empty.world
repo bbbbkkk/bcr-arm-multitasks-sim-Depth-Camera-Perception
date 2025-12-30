@@ -5,9 +5,6 @@
 
         <!-- Plugin for simulating physics -->
         <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics">
-            <engine>
-                <filename>ignition-physics-dartsim-plugin</filename>
-            </engine>
         </plugin>
 
         <!-- Plugin for handling user commands -->
