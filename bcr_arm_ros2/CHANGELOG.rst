@@ -2,6 +2,16 @@
 Changelog for package bcr_arm_ros2
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Synchronize package version
+* Contributors: Mathew Hans
+
+0.1.1 (2025-09-30)
+------------------
+* Minor fixes for release 
+* Contributors: Mathew Hans
+
 0.1.0 (2025-09-17)
 ------------------
 * Initial public release of BCR Arm ROS 2 package.
