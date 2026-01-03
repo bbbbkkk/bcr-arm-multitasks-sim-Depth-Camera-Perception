@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>bcr_arm_gazebo</name>
-  <version>0.1.2</version>
+  <version>0.1.3</version>
   <description>gazebo simulation and control scripts for bcr 7-dof robotic arm</description>
   <maintainer email="vimarsh@blackcoffeerobotics.com">Vimarsh Shah</maintainer>
   <maintainer email="mathew@blackcoffeerobotics.com">Mathew Hans</maintainer>

@@ -2,8 +2,8 @@
 Changelog for package bcr_arm_gazebo
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.1.3 (2026-01-03)
+------------------
 * Fixed Dependency issues 
 * Contributors: Mathew Hans
 

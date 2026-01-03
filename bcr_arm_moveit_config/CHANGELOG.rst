@@ -2,8 +2,8 @@
 Changelog for package bcr_arm_moveit_config
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.1.3 (2026-01-03)
+------------------
 * Fixed dependency issues
 * Contributors: Mathew Hans
 
