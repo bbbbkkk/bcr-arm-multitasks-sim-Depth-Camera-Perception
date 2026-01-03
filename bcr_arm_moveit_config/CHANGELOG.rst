@@ -2,10 +2,15 @@
 Changelog for package bcr_arm_moveit_config
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Fixed dependency issues
+* Contributors: Mathew Hans
+
 0.1.2 (2026-01-02)
 ------------------
 * removed redundent plugins
-* Contributors: mathew4star
+* Contributors: Mathew Hans
 
 0.1.1 (2025-09-30)
 ------------------

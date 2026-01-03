@@ -2,6 +2,11 @@
 Changelog for package bcr_arm
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Fixed dependencies
+* Contributors: Mathew Hans 
+
 0.1.2 (2026-01-02)
 ------------------
 * Synchronize package version
