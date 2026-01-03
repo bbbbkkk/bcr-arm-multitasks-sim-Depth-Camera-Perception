@@ -14,7 +14,6 @@
   <depend>controller_manager</depend>
   <depend>gripper_controllers</depend>
   <depend>gz_ros2_control</depend>
-  <depend>ignition-plugin</depend>
   <depend>python3-numpy</depend>
   <depend>rclcpp</depend>
   <depend>ros_gz</depend>
