@@ -2,3 +2,68 @@ install/*
 build/*
 log/*
 isaacsim/_*/*
+# ROS2 / colcon
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# RViz backup
+*.rviz.bak.*
+*.bak.*
+
+# Large ROS files
+*.bag
+*.db3
+*.mcap
+*.pcd
+*.ply
+*.pbstream
+
+# Secrets
+.env
+*.key
+*.pem
+*.secret
+
+# ROS2 / colcon
+build/
+install/
+log/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# RViz backup
+*.rviz.bak.*
+*.bak.*
+
+# Large ROS files
+*.bag
+*.db3
+*.mcap
+*.pcd
+*.ply
+*.pbstream
+
+# Secrets
+.env
+*.key
+*.pem
+*.secret

@@ -4,14 +4,25 @@
   <name>bcr_arm_description</name>
   <version>0.1.3</version>
   <description>robot description files including urdf, meshes and launch files for the bcr arm</description>
+
   <maintainer email="vimarsh@blackcoffeerobotics.com">Vimarsh Shah</maintainer>
   <maintainer email="mathew@blackcoffeerobotics.com">Mathew Hans</maintainer>
   <maintainer email="gaurav@blackcoffeerobotics.com">Gaurav Gupta</maintainer>
+
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+
+  <!-- Original dependency -->
   <depend>urdf_tutorial</depend>
 
+  <!-- Xacro is required to process .urdf.xacro files -->
+  <exec_depend>xacro</exec_depend>
+
+  <!-- Robotiq 2F-85 gripper model dependency -->
+  <exec_depend>robotiq_description</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

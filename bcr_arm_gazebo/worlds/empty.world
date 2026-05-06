@@ -1,85 +1,321 @@
 <?xml version="1.0"?>
 
-<sdf version="1.6">
-    <world name="default">
+<sdf version="1.7">
+  <world name="default">
 
-        <!-- Plugin for simulating physics -->
-        <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics">
-        </plugin>
+    <!-- ========================================================= -->
+    <!-- Basic Gazebo systems                                      -->
+    <!-- ========================================================= -->
 
-        <!-- Plugin for handling user commands -->
-        <plugin filename="ignition-gazebo-user-commands-system"
+    <plugin filename="ignition-gazebo-physics-system"
+            name="ignition::gazebo::systems::Physics">
+    </plugin>
+
+    <plugin filename="ignition-gazebo-user-commands-system"
             name="ignition::gazebo::systems::UserCommands">
-        </plugin>
+    </plugin>
 
-        <!-- Plugin for broadcasting scene updates -->
-        <plugin filename="ignition-gazebo-scene-broadcaster-system"
+    <plugin filename="ignition-gazebo-scene-broadcaster-system"
             name="ignition::gazebo::systems::SceneBroadcaster">
-        </plugin>
+    </plugin>
 
-        <!-- Plugin for handling sensors like the LIDAR -->
-        <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
-            <render_engine>ogre2</render_engine>
-        </plugin>
+    <plugin filename="ignition-gazebo-sensors-system"
+            name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
 
-        <!-- Plugin for IMU -->
-        <plugin filename="ignition-gazebo-imu-system" name="ignition::gazebo::systems::Imu">
-        </plugin>
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu">
+    </plugin>
 
-        <!-- Standard Earth gravity -->
-        <gravity>0.0 0.0 -9.81</gravity>
+    <gravity>0.0 0.0 -9.8</gravity>
 
-        <!-- Include a model of the Sun from an external URI -->
-        <include>
-            <uri>
-                https://fuel.gazebosim.org/1.0/OpenRobotics/models/Sun
-            </uri>
-        </include>
 
-        <!-- Ground Plane with enhanced properties -->
-        <model name="ground_plane">
-            <static>true</static>
-            <link name="link">
-                <collision name="collision">
-                    <geometry>
-                        <plane>
-                            <normal>0 0 1</normal>
-                        </plane>
-                    </geometry>
-                    <surface>
-                        <friction>
-                            <torsional>
-                                <coefficient>0.1</coefficient>
-                            </torsional>
-                            <ode>
-                                <mu>0.8</mu>
-                                <mu2>0.8</mu2>
-                            </ode>
-                        </friction>
-                    </surface>
-                </collision>
-                <visual name="visual">
-                    <geometry>
-                        <plane>
-                            <normal>0 0 1</normal>
-                            <size>120 120</size>
-                        </plane>
-                    </geometry>
-                    <material>
-                        <ambient>0.7 0.7 0.7 1</ambient>
-                        <diffuse>0.9 0.9 0.9 1</diffuse>
-                        <specular>0.2 0.2 0.2 1</specular>
-                    </material>
-                </visual>
-            </link>
-        </model>
+    <!-- ========================================================= -->
+    <!-- Lighting                                                  -->
+    <!-- ========================================================= -->
 
-        <!-- Define scene properties -->
-        <scene>
-            <shadows>true</shadows>
-            <ambient>0.4 0.4 0.4 1</ambient>
-            <background>0.7 0.8 1.0 1</background>
-        </scene>
+    <include>
+      <uri>
+        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Sun
+      </uri>
+    </include>
 
-    </world>
+
+    <!-- ========================================================= -->
+    <!-- Opaque brown floor                                        -->
+    <!-- Smaller than before, shifted forward                       -->
+    <!-- ========================================================= -->
+
+    <model name="dirt_floor">
+      <static>true</static>
+
+      <!--
+        Floor size = 1.50 x 1.50 m
+        Original was 3.00 x 3.00 m, so area is 1/4.
+        Shifted forward in +X direction so less area is behind robot.
+      -->
+      <pose>0.45 0.00 -0.010 0 0 0</pose>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>1.50 1.50 0.020</size>
+            </box>
+          </geometry>
+
+          <surface>
+            <friction>
+              <ode>
+                <mu>2.5</mu>
+                <mu2>2.5</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>1.50 1.50 0.020</size>
+            </box>
+          </geometry>
+
+          <!-- Opaque dirt / soil color -->
+          <material>
+            <ambient>0.48 0.34 0.18 1.0</ambient>
+            <diffuse>0.55 0.39 0.22 1.0</diffuse>
+            <specular>0.08 0.06 0.04 1.0</specular>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <!-- ========================================================= -->
+    <!-- Green stacking / placing area                             -->
+    <!-- Moved farther by one area side length                      -->
+    <!-- ========================================================= -->
+
+    <model name="stacking_area">
+      <static>true</static>
+
+      <!--
+        Previous center was around x = 0.42.
+        Area side length = 0.30.
+        New x = 0.72.
+      -->
+      <pose>0.52 0.00 0.006 0 0 0</pose>
+
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.30 0.30 0.008</size>
+            </box>
+          </geometry>
+
+          <!-- Opaque green placing area -->
+          <material>
+            <ambient>0.0 0.65 0.0 1.0</ambient>
+            <diffuse>0.0 0.85 0.0 1.0</diffuse>
+            <specular>0.1 0.1 0.1 1.0</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+
+    <!-- ========================================================= -->
+    <!-- Red block                                                 -->
+    <!-- Bigger block, dispersed position                          -->
+    <!-- ========================================================= -->
+
+    <model name="red_block">
+      <static>false</static>
+
+      <!-- block size = 0.09 m, so center z = 0.045 -->
+      <pose>0.42 0.48 0.045 0 0 0.25</pose>
+
+      <link name="link">
+
+        <inertial>
+          <mass>0.18</mass>
+          <inertia>
+            <ixx>0.000243</ixx>
+            <iyy>0.000243</iyy>
+            <izz>0.000243</izz>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyz>0.0</iyz>
+          </inertia>
+        </inertial>
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.09 0.09 0.09</size>
+            </box>
+          </geometry>
+
+          <surface>
+            <friction>
+              <ode>
+                <mu>3.0</mu>
+                <mu2>3.0</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.09 0.09 0.09</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>1.0 0.0 0.0 1.0</ambient>
+            <diffuse>1.0 0.0 0.0 1.0</diffuse>
+            <specular>0.2 0.2 0.2 1.0</specular>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <!-- ========================================================= -->
+    <!-- Blue block                                                -->
+    <!-- Bigger block, dispersed position                          -->
+    <!-- ========================================================= -->
+
+    <model name="blue_block">
+      <static>false</static>
+
+      <pose>0.38 -0.32 0.045 0 0 -0.40</pose>
+
+      <link name="link">
+
+        <inertial>
+          <mass>0.18</mass>
+          <inertia>
+            <ixx>0.000243</ixx>
+            <iyy>0.000243</iyy>
+            <izz>0.000243</izz>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyz>0.0</iyz>
+          </inertia>
+        </inertial>
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.09 0.09 0.09</size>
+            </box>
+          </geometry>
+
+          <surface>
+            <friction>
+              <ode>
+                <mu>3.0</mu>
+                <mu2>3.0</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.09 0.09 0.09</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.0 0.1 1.0 1.0</ambient>
+            <diffuse>0.0 0.1 1.0 1.0</diffuse>
+            <specular>0.2 0.2 0.2 1.0</specular>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <!-- ========================================================= -->
+    <!-- Purple block                                              -->
+    <!-- Bigger block, dispersed position                          -->
+    <!-- ========================================================= -->
+
+    <model name="purple_block">
+      <static>false</static>
+
+      <pose>0.42 0.26 0.045 0 0 0.65</pose>
+
+      <link name="link">
+
+        <inertial>
+          <mass>0.18</mass>
+          <inertia>
+            <ixx>0.000243</ixx>
+            <iyy>0.000243</iyy>
+            <izz>0.000243</izz>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyz>0.0</iyz>
+          </inertia>
+        </inertial>
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.09 0.09 0.09</size>
+            </box>
+          </geometry>
+
+          <surface>
+            <friction>
+              <ode>
+                <mu>3.0</mu>
+                <mu2>3.0</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.09 0.09 0.09</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.55 0.0 0.85 1.0</ambient>
+            <diffuse>0.55 0.0 0.85 1.0</diffuse>
+            <specular>0.2 0.2 0.2 1.0</specular>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <!-- ========================================================= -->
+    <!-- Scene properties                                          -->
+    <!-- ========================================================= -->
+
+    <scene>
+      <shadows>false</shadows>
+      <ambient>0.65 0.65 0.65 1.0</ambient>
+      <background>0.78 0.78 0.78 1.0</background>
+    </scene>
+
+  </world>
 </sdf>

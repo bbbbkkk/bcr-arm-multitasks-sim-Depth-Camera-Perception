@@ -9,6 +9,10 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
+    simple_gripper_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+
 joint_trajectory_controller:
   ros__parameters:
     joints:
@@ -19,8 +23,31 @@ joint_trajectory_controller:
       - joint5
       - joint6
       - joint7
+
     command_interfaces:
       - position
+
     state_interfaces:
       - position
       - velocity
+
+
+simple_gripper_controller:
+  ros__parameters:
+    joints:
+      - simple_left_finger_joint
+      - simple_right_finger_joint
+
+    command_interfaces:
+      - position
+
+    state_interfaces:
+      - position
+      - velocity
+
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    open_loop_control: false
+    allow_integration_in_goal_trajectories: true
+
+

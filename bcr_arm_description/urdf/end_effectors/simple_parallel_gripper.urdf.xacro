@@ -1,0 +1,396 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    Simple Parallel Gripper
+
+    Features:
+    - Stable Gazebo physics
+    - Two prismatic joints
+    - No mimic joint
+    - Has lower round base, central housing, upper sliding rail
+    - Two fingers move on the upper rail
+    - Visual style:
+      * black lower mount
+      * silver central body
+      * silver sliding rail
+      * black fingers
+      * gray gripping pads
+  -->
+
+  <!-- ================= Materials ================= -->
+
+  <material name="simple_gripper_black">
+    <color rgba="0.02 0.02 0.02 1.0"/>
+  </material>
+
+  <material name="simple_gripper_dark">
+    <color rgba="0.10 0.10 0.10 1.0"/>
+  </material>
+
+  <material name="simple_gripper_gray">
+    <color rgba="0.70 0.70 0.70 1.0"/>
+  </material>
+
+  <material name="simple_gripper_silver">
+    <color rgba="0.75 0.76 0.74 1.0"/>
+  </material>
+
+  <material name="simple_gripper_light_silver">
+    <color rgba="0.88 0.88 0.86 1.0"/>
+  </material>
+
+  <material name="simple_gripper_blue">
+    <color rgba="0.10 0.25 0.80 1.0"/>
+  </material>
+
+
+  <!-- ================= Inertial helper ================= -->
+
+  <xacro:macro name="simple_box_inertial" params="mass x y z">
+    <inertial>
+      <mass value="${mass}"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia
+        ixx="${mass * (y*y + z*z) / 12.0}"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="${mass * (x*x + z*z) / 12.0}"
+        iyz="0.0"
+        izz="${mass * (x*x + y*y) / 12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+
+  <!-- ================= Main gripper macro ================= -->
+
+  <xacro:macro name="simple_parallel_gripper" params="prefix parent_link xyz rpy">
+
+    <!-- ========================================================= -->
+    <!-- Mount joint: flange -> simple_gripper_base_link            -->
+    <!-- ========================================================= -->
+
+    <joint name="${prefix}simple_gripper_mount_joint" type="fixed">
+      <parent link="${parent_link}"/>
+      <child link="${prefix}simple_gripper_base_link"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+    </joint>
+
+
+    <!-- ========================================================= -->
+    <!-- Gripper base link                                         -->
+    <!-- Includes: round mount, central housing, upper sliding rail -->
+    <!-- ========================================================= -->
+
+    <link name="${prefix}simple_gripper_base_link">
+      <xacro:simple_box_inertial mass="0.30" x="0.080" y="0.130" z="0.130"/>
+
+      <!-- Lower round mount body: keep black -->
+      <visual>
+        <origin xyz="0 0 0.025" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.035" length="0.050"/>
+        </geometry>
+        <material name="simple_gripper_black"/>
+      </visual>
+
+      <!-- Blue top cap on round mount -->
+      <visual>
+        <origin xyz="0 0 0.055" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.024" length="0.014"/>
+        </geometry>
+        <material name="simple_gripper_blue"/>
+      </visual>
+
+      <!-- Silver central housing: connects lower base to upper rail -->
+      <visual>
+        <origin xyz="0 0 0.075" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.058 0.064 0.052"/>
+        </geometry>
+        <material name="simple_gripper_silver"/>
+      </visual>
+
+      <!-- Small dark front cover on central housing -->
+      <visual>
+        <origin xyz="0.002 0 0.075" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.040 0.040 0.030"/>
+        </geometry>
+        <material name="simple_gripper_dark"/>
+      </visual>
+
+      <!-- Main upper sliding rail: changed from black to silver -->
+      <visual>
+        <origin xyz="0 0 0.100" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.078 0.128 0.024"/>
+        </geometry>
+        <material name="simple_gripper_silver"/>
+      </visual>
+
+      <!-- Light silver top cover on sliding rail -->
+      <visual>
+        <origin xyz="0 0 0.116" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.064 0.105 0.008"/>
+        </geometry>
+        <material name="simple_gripper_light_silver"/>
+      </visual>
+
+      <!-- Left fixed support platform under moving finger: silver -->
+      <visual>
+        <origin xyz="0 0.060 0.108" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.060 0.075 0.024"/>
+        </geometry>
+        <material name="simple_gripper_silver"/>
+      </visual>
+
+      <!-- Right fixed support platform under moving finger: silver -->
+      <visual>
+        <origin xyz="0 -0.060 0.108" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.060 0.075 0.024"/>
+        </geometry>
+        <material name="simple_gripper_silver"/>
+      </visual>
+
+      <!-- Small dark left end cap on rail -->
+      <visual>
+        <origin xyz="0 0.105 0.104" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.080 0.014 0.032"/>
+        </geometry>
+        <material name="simple_gripper_dark"/>
+      </visual>
+
+      <!-- Small dark right end cap on rail -->
+      <visual>
+        <origin xyz="0 -0.105 0.104" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.080 0.014 0.032"/>
+        </geometry>
+        <material name="simple_gripper_dark"/>
+      </visual>
+
+      <!-- Base collision -->
+      <collision>
+        <origin xyz="0 0 0.040" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.075 0.090 0.080"/>
+        </geometry>
+      </collision>
+
+      <!-- Central housing collision -->
+      <collision>
+        <origin xyz="0 0 0.075" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.060 0.066 0.055"/>
+        </geometry>
+      </collision>
+
+      <!-- Rail collision -->
+      <collision>
+        <origin xyz="0 0 0.100" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.078 0.128 0.024"/>
+        </geometry>
+      </collision>
+    </link>
+
+
+    <!-- ========================================================= -->
+    <!-- Left finger joint and link                                -->
+    <!-- Positive position moves left finger outward along +Y       -->
+    <!-- ========================================================= -->
+
+    <joint name="${prefix}simple_left_finger_joint" type="prismatic">
+      <parent link="${prefix}simple_gripper_base_link"/>
+      <child link="${prefix}simple_left_finger_link"/>
+
+      <!-- Finger sits on the upper sliding rail -->
+      <origin xyz="0 0.030 0.110" rpy="0 0 0"/>
+
+      <axis xyz="0 1 0"/>
+
+      <limit lower="0.0" upper="0.045" effort="100.0" velocity="0.10"/>
+      <dynamics damping="4.0" friction="0.8"/>
+    </joint>
+
+    <link name="${prefix}simple_left_finger_link">
+      <xacro:simple_box_inertial mass="0.075" x="0.026" y="0.028" z="0.145"/>
+
+      <!-- Moving slider block on rail: keep dark -->
+      <visual>
+        <origin xyz="0 0 0.010" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.050 0.046 0.022"/>
+        </geometry>
+        <material name="simple_gripper_dark"/>
+      </visual>
+
+      <!-- Small silver slider cover -->
+      <visual>
+        <origin xyz="0 0 0.025" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.038 0.034 0.010"/>
+        </geometry>
+        <material name="simple_gripper_silver"/>
+      </visual>
+
+      <!-- Vertical finger body: keep black -->
+      <visual>
+        <origin xyz="0 0 0.075" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.024 0.024 0.130"/>
+        </geometry>
+        <material name="simple_gripper_black"/>
+      </visual>
+
+      <!-- Inner gray gripping pad -->
+      <visual>
+        <origin xyz="0 -0.0135 0.078" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.026 0.005 0.095"/>
+        </geometry>
+        <material name="simple_gripper_gray"/>
+      </visual>
+
+      <!-- Larger fingertip block -->
+      <visual>
+        <origin xyz="0 -0.004 0.142" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.030 0.034 0.024"/>
+        </geometry>
+        <material name="simple_gripper_dark"/>
+      </visual>
+
+      <!-- Gray fingertip contact pad -->
+      <visual>
+        <origin xyz="0 -0.020 0.142" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.028 0.004 0.020"/>
+        </geometry>
+        <material name="simple_gripper_gray"/>
+      </visual>
+
+      <!-- Stable collision -->
+      <collision>
+        <origin xyz="0 -0.002 0.075" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.026 0.028 0.145"/>
+        </geometry>
+      </collision>
+    </link>
+
+
+    <!-- ========================================================= -->
+    <!-- Right finger joint and link                               -->
+    <!-- Positive position moves right finger outward along -Y      -->
+    <!-- ========================================================= -->
+
+    <joint name="${prefix}simple_right_finger_joint" type="prismatic">
+      <parent link="${prefix}simple_gripper_base_link"/>
+      <child link="${prefix}simple_right_finger_link"/>
+
+      <!-- Finger sits on the upper sliding rail -->
+      <origin xyz="0 -0.030 0.110" rpy="0 0 0"/>
+
+      <axis xyz="0 -1 0"/>
+
+      <limit lower="0.0" upper="0.045" effort="100.0" velocity="0.10"/>
+      <dynamics damping="4.0" friction="0.8"/>
+    </joint>
+
+    <link name="${prefix}simple_right_finger_link">
+      <xacro:simple_box_inertial mass="0.075" x="0.026" y="0.028" z="0.145"/>
+
+      <!-- Moving slider block on rail: keep dark -->
+      <visual>
+        <origin xyz="0 0 0.010" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.050 0.046 0.022"/>
+        </geometry>
+        <material name="simple_gripper_dark"/>
+      </visual>
+
+      <!-- Small silver slider cover -->
+      <visual>
+        <origin xyz="0 0 0.025" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.038 0.034 0.010"/>
+        </geometry>
+        <material name="simple_gripper_silver"/>
+      </visual>
+
+      <!-- Vertical finger body: keep black -->
+      <visual>
+        <origin xyz="0 0 0.075" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.024 0.024 0.130"/>
+        </geometry>
+        <material name="simple_gripper_black"/>
+      </visual>
+
+      <!-- Inner gray gripping pad -->
+      <visual>
+        <origin xyz="0 0.0135 0.078" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.026 0.005 0.095"/>
+        </geometry>
+        <material name="simple_gripper_gray"/>
+      </visual>
+
+      <!-- Larger fingertip block -->
+      <visual>
+        <origin xyz="0 0.004 0.142" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.030 0.034 0.024"/>
+        </geometry>
+        <material name="simple_gripper_dark"/>
+      </visual>
+
+      <!-- Gray fingertip contact pad -->
+      <visual>
+        <origin xyz="0 0.020 0.142" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.028 0.004 0.020"/>
+        </geometry>
+        <material name="simple_gripper_gray"/>
+      </visual>
+
+      <!-- Stable collision -->
+      <collision>
+        <origin xyz="0 0.002 0.075" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.026 0.028 0.145"/>
+        </geometry>
+      </collision>
+    </link>
+
+
+    <!-- ========================================================= -->
+    <!-- Gazebo physics hints                                      -->
+    <!-- ========================================================= -->
+
+    <gazebo reference="${prefix}simple_gripper_base_link">
+      <selfCollide>false</selfCollide>
+    </gazebo>
+
+    <gazebo reference="${prefix}simple_left_finger_link">
+      <selfCollide>false</selfCollide>
+      <mu1>1.8</mu1>
+      <mu2>1.8</mu2>
+    </gazebo>
+
+    <gazebo reference="${prefix}simple_right_finger_link">
+      <selfCollide>false</selfCollide>
+      <mu1>1.8</mu1>
+      <mu2>1.8</mu2>
+    </gazebo>
+
+  </xacro:macro>
+
+</robot>

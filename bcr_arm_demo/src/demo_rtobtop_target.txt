@@ -1,0 +1,934 @@
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+
+#include <control_msgs/action/follow_joint_trajectory.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit_msgs/msg/robot_trajectory.hpp>
+#include <trajectory_msgs/msg/joint_trajectory_point.hpp>
+
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+using namespace std::chrono_literals;
+
+using FollowJointTrajectory = control_msgs::action::FollowJointTrajectory;
+
+static geometry_msgs::msg::Pose make_pose(
+  double x,
+  double y,
+  double z,
+  double roll,
+  double pitch,
+  double yaw)
+{
+  geometry_msgs::msg::Pose pose;
+
+  pose.position.x = x;
+  pose.position.y = y;
+  pose.position.z = z;
+
+  tf2::Quaternion q;
+  q.setRPY(roll, pitch, yaw);
+  q.normalize();
+
+  pose.orientation = tf2::toMsg(q);
+
+  return pose;
+}
+
+static bool send_gripper_goal(
+  const rclcpp::Node::SharedPtr & node,
+  double position,
+  double duration_sec)
+{
+  auto client = rclcpp_action::create_client<FollowJointTrajectory>(
+    node,
+    "/simple_gripper_controller/follow_joint_trajectory"
+  );
+
+  RCLCPP_INFO(node->get_logger(), "Waiting for simple gripper action server...");
+
+  if (!client->wait_for_action_server(5s)) {
+    RCLCPP_ERROR(node->get_logger(), "simple_gripper_controller action server not available.");
+    return false;
+  }
+
+  FollowJointTrajectory::Goal goal;
+  goal.trajectory.joint_names = {
+    "simple_left_finger_joint",
+    "simple_right_finger_joint",
+  };
+
+  trajectory_msgs::msg::JointTrajectoryPoint point;
+  point.positions = {position, position};
+
+  int sec = static_cast<int>(duration_sec);
+  int nanosec = static_cast<int>((duration_sec - sec) * 1e9);
+
+  point.time_from_start.sec = sec;
+  point.time_from_start.nanosec = nanosec;
+
+  goal.trajectory.points.push_back(point);
+
+  RCLCPP_INFO(node->get_logger(), "Sending gripper command: %.3f", position);
+
+  auto goal_future = client->async_send_goal(goal);
+
+  if (rclcpp::spin_until_future_complete(node, goal_future, 10s) !=
+      rclcpp::FutureReturnCode::SUCCESS)
+  {
+    RCLCPP_ERROR(node->get_logger(), "Failed to send gripper goal.");
+    return false;
+  }
+
+  auto goal_handle = goal_future.get();
+
+  if (!goal_handle) {
+    RCLCPP_ERROR(node->get_logger(), "Gripper goal rejected.");
+    return false;
+  }
+
+  auto result_future = client->async_get_result(goal_handle);
+
+  if (rclcpp::spin_until_future_complete(node, result_future, 10s) !=
+      rclcpp::FutureReturnCode::SUCCESS)
+  {
+    RCLCPP_ERROR(node->get_logger(), "Failed to get gripper result.");
+    return false;
+  }
+
+  auto result = result_future.get().result;
+
+  if (result->error_code != 0) {
+    RCLCPP_ERROR(
+      node->get_logger(),
+      "Gripper command failed. error_code=%d, error_string=%s",
+      result->error_code,
+      result->error_string.c_str()
+    );
+    return false;
+  }
+
+  RCLCPP_INFO(node->get_logger(), "Gripper command succeeded.");
+  return true;
+}
+
+static bool plan_and_execute_pose(
+  const rclcpp::Node::SharedPtr & node,
+  moveit::planning_interface::MoveGroupInterface & move_group,
+  const std::string & name,
+  const geometry_msgs::msg::Pose & target_pose)
+{
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Plan to [%s]: x=%.3f y=%.3f z=%.3f",
+    name.c_str(),
+    target_pose.position.x,
+    target_pose.position.y,
+    target_pose.position.z
+  );
+
+  move_group.setStartStateToCurrentState();
+  move_group.setPoseTarget(target_pose);
+
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  bool planned = static_cast<bool>(move_group.plan(plan));
+
+  move_group.clearPoseTargets();
+
+  if (!planned) {
+    RCLCPP_ERROR(node->get_logger(), "Pose planning failed: %s", name.c_str());
+    return false;
+  }
+
+  auto result = move_group.execute(plan);
+
+  if (result != moveit::core::MoveItErrorCode::SUCCESS) {
+    RCLCPP_ERROR(node->get_logger(), "Pose execution failed: %s", name.c_str());
+    return false;
+  }
+
+  RCLCPP_INFO(node->get_logger(), "Pose motion succeeded: %s", name.c_str());
+  return true;
+}
+
+static bool execute_cartesian_to_pose(
+  const rclcpp::Node::SharedPtr & node,
+  moveit::planning_interface::MoveGroupInterface & move_group,
+  const std::string & name,
+  const geometry_msgs::msg::Pose & target_pose,
+  double required_fraction = 0.90)
+{
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Cartesian move [%s] to x=%.3f y=%.3f z=%.3f",
+    name.c_str(),
+    target_pose.position.x,
+    target_pose.position.y,
+    target_pose.position.z
+  );
+
+  move_group.setStartStateToCurrentState();
+
+  std::vector<geometry_msgs::msg::Pose> waypoints;
+  waypoints.push_back(target_pose);
+
+  moveit_msgs::msg::RobotTrajectory trajectory;
+
+  const double eef_step = 0.005;
+  const double jump_threshold = 0.0;
+  const bool avoid_collisions = true;
+
+  double fraction = move_group.computeCartesianPath(
+    waypoints,
+    eef_step,
+    jump_threshold,
+    trajectory,
+    avoid_collisions
+  );
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Cartesian path [%s] fraction = %.3f",
+    name.c_str(),
+    fraction
+  );
+
+  if (fraction < required_fraction) {
+    RCLCPP_ERROR(
+      node->get_logger(),
+      "Cartesian path failed: %s, fraction %.3f < %.3f",
+      name.c_str(),
+      fraction,
+      required_fraction
+    );
+    return false;
+  }
+
+  auto result = move_group.execute(trajectory);
+
+  if (result != moveit::core::MoveItErrorCode::SUCCESS) {
+    RCLCPP_ERROR(node->get_logger(), "Cartesian execution failed: %s", name.c_str());
+    return false;
+  }
+
+  RCLCPP_INFO(node->get_logger(), "Cartesian motion succeeded: %s", name.c_str());
+  return true;
+}
+
+static bool move_named_target(
+  const rclcpp::Node::SharedPtr & node,
+  moveit::planning_interface::MoveGroupInterface & move_group,
+  const std::string & target_name)
+{
+  auto named_targets = move_group.getNamedTargets();
+
+  if (std::find(named_targets.begin(), named_targets.end(), target_name) == named_targets.end()) {
+    RCLCPP_WARN(
+      node->get_logger(),
+      "Named target [%s] not found. Skip named target motion.",
+      target_name.c_str()
+    );
+    return true;
+  }
+
+  RCLCPP_INFO(node->get_logger(), "Moving to named target: %s", target_name.c_str());
+
+  move_group.setStartStateToCurrentState();
+  move_group.setNamedTarget(target_name);
+
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  bool planned = static_cast<bool>(move_group.plan(plan));
+
+  if (!planned) {
+    RCLCPP_ERROR(node->get_logger(), "Named target planning failed: %s", target_name.c_str());
+    return false;
+  }
+
+  auto result = move_group.execute(plan);
+
+  if (result != moveit::core::MoveItErrorCode::SUCCESS) {
+    RCLCPP_ERROR(node->get_logger(), "Named target execution failed: %s", target_name.c_str());
+    return false;
+  }
+
+  RCLCPP_INFO(node->get_logger(), "Named target motion succeeded: %s", target_name.c_str());
+  return true;
+}
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+
+  auto node = rclcpp::Node::make_shared(
+    "physics_pick_place_red_block_demo",
+    rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
+  );
+
+  RCLCPP_INFO(node->get_logger(), "Starting red + blue + purple stacking demo.");
+  RCLCPP_INFO(node->get_logger(), "No attach. No fake teleport. Pure Gazebo physics grasp.");
+
+  const std::string planning_group =
+    node->get_parameter_or<std::string>("planning_group", "bcr_arm");
+
+  const std::string eef_link =
+    node->get_parameter_or<std::string>("eef_link", "flange");
+
+  moveit::planning_interface::MoveGroupInterface move_group(node, planning_group);
+
+  move_group.setEndEffectorLink(eef_link);
+  move_group.setPlanningTime(10.0);
+  move_group.setNumPlanningAttempts(10);
+
+  move_group.setMaxVelocityScalingFactor(0.08);
+  move_group.setMaxAccelerationScalingFactor(0.08);
+
+  RCLCPP_INFO(node->get_logger(), "Planning group: %s", planning_group.c_str());
+  RCLCPP_INFO(node->get_logger(), "Planning frame: %s", move_group.getPlanningFrame().c_str());
+  RCLCPP_INFO(node->get_logger(), "End effector link: %s", move_group.getEndEffectorLink().c_str());
+
+  // =========================================================
+  // Scene constants from current empty.world
+  //
+  // red_block:
+  //   <pose>0.42 0.48 0.045 0 0 0.25</pose>
+  //
+  // blue_block:
+  //   <pose>0.38 -0.32 0.045 0 0 -0.40</pose>
+  //
+  // purple_block:
+  //   <pose>0.25 0.26 0.045 0 0 0.65</pose>
+  //
+  // stacking_area:
+  //   <pose>0.52 0.00 0.006 0 0 0</pose>
+  // =========================================================
+
+  const double red_x = 0.42;
+  const double red_y = 0.48;
+  const double red_yaw = 0.25;
+
+  const double blue_x = 0.38;
+  const double blue_y = -0.32;
+  const double blue_yaw = -0.40;
+
+  const double purple_x = 0.25;
+  const double purple_y = 0.26;
+  const double purple_yaw = 0.65;
+
+  const double place_x = 0.52;
+  const double place_y = 0.00;
+
+  const double cube_size = 0.09;
+
+  // =========================================================
+  // Flange -> gripper center compensation
+  //
+  // 红色、蓝色现在都能正常完成，所以全部保持 0。
+  // 如果紫色抓取偏了，只调 purple_gripper_center_offset_x/y。
+  // =========================================================
+
+  const double red_gripper_center_offset_x = 0.00;
+  const double red_gripper_center_offset_y = 0.00;
+
+  const double blue_gripper_center_offset_x = 0.00;
+  const double blue_gripper_center_offset_y = 0.00;
+
+  const double purple_gripper_center_offset_x = 0.00;
+  const double purple_gripper_center_offset_y = 0.00;
+
+  // =========================================================
+  // Heights
+  //
+  // z 是 flange 的 z，不是木块中心 z。
+  //
+  // place_low_z:
+  //   红色木块放到地面/绿色区域时使用。
+  //
+  // blue_place_low_z:
+  //   蓝色木块放到红色木块上面。
+  //
+  // purple_place_low_z:
+  //   紫色木块放到蓝色木块上面。
+  // =========================================================
+
+  const double safe_high_z = 0.45;
+  const double pick_low_z = 0.34;
+  const double lift_z = 0.45;
+
+  const double place_low_z = 0.37;
+
+  const double blue_safe_high_z = 0.55;
+  const double blue_lift_z = 0.55;
+  const double blue_place_high_z = 0.55;
+  const double blue_place_low_z = place_low_z + cube_size;
+
+  const double purple_safe_high_z = 0.64;
+  const double purple_lift_z = 0.64;
+  const double purple_place_high_z = 0.64;
+  const double purple_place_low_z = place_low_z + 2.0 * cube_size;
+
+  // =========================================================
+  // Gripper parameters
+  //
+  // 保持你当前红/蓝木块可用的两段夹取逻辑。
+  // =========================================================
+
+  const double gripper_open = 0.040;
+  const double gripper_pre_close = 0.030;
+  const double gripper_close = 0.020;
+
+  // =========================================================
+  // Orientation
+  // =========================================================
+
+  const double roll = M_PI;
+  const double pitch = 0.0;
+
+  const double gripper_yaw_offset = 1.5708;
+
+  const double red_pick_yaw = red_yaw + gripper_yaw_offset;
+  const double blue_pick_yaw = blue_yaw + gripper_yaw_offset;
+  const double purple_pick_yaw = purple_yaw + gripper_yaw_offset;
+
+  const double place_yaw = 0.0;
+
+  const std::string final_target = "upright";
+
+  // =========================================================
+  // Red block poses
+  //
+  // 红色木块代码保持原来的流程：
+  //   抓红色 -> 放到绿色区 -> 垂直向上退开
+  // =========================================================
+
+  const double red_pick_flange_x =
+    red_x
+    - std::cos(red_pick_yaw) * red_gripper_center_offset_x
+    + std::sin(red_pick_yaw) * red_gripper_center_offset_y;
+
+  const double red_pick_flange_y =
+    red_y
+    - std::sin(red_pick_yaw) * red_gripper_center_offset_x
+    - std::cos(red_pick_yaw) * red_gripper_center_offset_y;
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Red block center: x=%.3f y=%.3f red_yaw=%.3f",
+    red_x,
+    red_y,
+    red_yaw
+  );
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Red flange pick target: x=%.3f y=%.3f pick_yaw=%.3f",
+    red_pick_flange_x,
+    red_pick_flange_y,
+    red_pick_yaw
+  );
+
+  const auto red_high_pose = make_pose(
+    red_pick_flange_x,
+    red_pick_flange_y,
+    safe_high_z,
+    roll,
+    pitch,
+    red_pick_yaw
+  );
+
+  const auto red_low_pose = make_pose(
+    red_pick_flange_x,
+    red_pick_flange_y,
+    pick_low_z,
+    roll,
+    pitch,
+    red_pick_yaw
+  );
+
+  const auto red_lift_pose = make_pose(
+    red_pick_flange_x,
+    red_pick_flange_y,
+    lift_z,
+    roll,
+    pitch,
+    red_pick_yaw
+  );
+
+  const auto place_high_pose = make_pose(
+    place_x,
+    place_y,
+    safe_high_z,
+    roll,
+    pitch,
+    place_yaw
+  );
+
+  const auto place_low_pose = make_pose(
+    place_x,
+    place_y,
+    place_low_z,
+    roll,
+    pitch,
+    place_yaw
+  );
+
+  // =========================================================
+  // Red block task
+  // 不要修改这段红色任务逻辑
+  // =========================================================
+
+  // 0. 先打开夹爪，避免靠近木块时夹爪闭合。
+  if (!send_gripper_goal(node, gripper_open, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1500ms);
+
+  // 1. 直接移动到红色木块上方。
+  if (!plan_and_execute_pose(node, move_group, "move_directly_to_red_block_high", red_high_pose)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 2. 到达红色木块上方后，再打开夹爪。
+  if (!send_gripper_goal(node, gripper_open, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(2500ms);
+
+  // 3. 笛卡尔垂直向下，到红块两侧。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_down_to_red_block_sides", red_low_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 4. 第一段夹取：轻轻靠近木块。
+  RCLCPP_INFO(node->get_logger(), "Pre-close gripper for red block.");
+
+  if (!send_gripper_goal(node, gripper_pre_close, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1000ms);
+
+  // 4.1 第二段夹取：轻夹红色木块。
+  RCLCPP_INFO(node->get_logger(), "Final close gripper for red block.");
+
+  if (!send_gripper_goal(node, gripper_close, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(2000ms);
+
+  // 5. 笛卡尔垂直向上抬起。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_lift_red_block", red_lift_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(500ms);
+
+  // 6. 移动到绿色放置区域中心上方。
+  if (!plan_and_execute_pose(node, move_group, "move_to_stacking_area_high", place_high_pose)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 7. 笛卡尔垂直向下，接近地面但不碰地。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_down_to_stacking_area", place_low_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 8. 松开夹爪，释放红色木块。
+  if (!send_gripper_goal(node, gripper_open, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1200ms);
+
+  // 9. 笛卡尔垂直向上撤离，远离红色木块。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_retreat_from_stacking_area", place_high_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1500ms);
+
+  // =========================================================
+  // Blue block task
+  //
+  // 从这里开始是新增逻辑：
+  //   抓蓝色木块
+  //   放到红色木块正上方
+  // =========================================================
+
+  const double blue_pick_flange_x =
+    blue_x
+    - std::cos(blue_pick_yaw) * blue_gripper_center_offset_x
+    + std::sin(blue_pick_yaw) * blue_gripper_center_offset_y;
+
+  const double blue_pick_flange_y =
+    blue_y
+    - std::sin(blue_pick_yaw) * blue_gripper_center_offset_x
+    - std::cos(blue_pick_yaw) * blue_gripper_center_offset_y;
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Blue block center: x=%.3f y=%.3f blue_yaw=%.3f",
+    blue_x,
+    blue_y,
+    blue_yaw
+  );
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Blue flange pick target: x=%.3f y=%.3f pick_yaw=%.3f",
+    blue_pick_flange_x,
+    blue_pick_flange_y,
+    blue_pick_yaw
+  );
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Blue place target on red block: x=%.3f y=%.3f place_low_z=%.3f",
+    place_x,
+    place_y,
+    blue_place_low_z
+  );
+
+  const auto blue_high_pose = make_pose(
+    blue_pick_flange_x,
+    blue_pick_flange_y,
+    blue_safe_high_z,
+    roll,
+    pitch,
+    blue_pick_yaw
+  );
+
+  const auto blue_low_pose = make_pose(
+    blue_pick_flange_x,
+    blue_pick_flange_y,
+    pick_low_z,
+    roll,
+    pitch,
+    blue_pick_yaw
+  );
+
+  const auto blue_lift_pose = make_pose(
+    blue_pick_flange_x,
+    blue_pick_flange_y,
+    blue_lift_z,
+    roll,
+    pitch,
+    blue_pick_yaw
+  );
+
+  const auto blue_place_high_pose = make_pose(
+    place_x,
+    place_y,
+    blue_place_high_z,
+    roll,
+    pitch,
+    place_yaw
+  );
+
+  const auto blue_place_low_pose = make_pose(
+    place_x,
+    place_y,
+    blue_place_low_z,
+    roll,
+    pitch,
+    place_yaw
+  );
+
+  // 10. 移动到蓝色木块上方。
+  if (!plan_and_execute_pose(node, move_group, "move_to_blue_block_high", blue_high_pose)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 11. 到达蓝色木块上方后打开夹爪。
+  if (!send_gripper_goal(node, gripper_open, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(2500ms);
+
+  // 12. 笛卡尔垂直下降到蓝色木块两侧。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_down_to_blue_block_sides", blue_low_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 13. 第一段夹取蓝色木块。
+  RCLCPP_INFO(node->get_logger(), "Pre-close gripper for blue block.");
+
+  if (!send_gripper_goal(node, gripper_pre_close, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1000ms);
+
+  // 14. 第二段轻夹蓝色木块。
+  RCLCPP_INFO(node->get_logger(), "Final close gripper for blue block.");
+
+  if (!send_gripper_goal(node, gripper_close, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(2000ms);
+
+  // 15. 垂直向上抬起蓝色木块。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_lift_blue_block", blue_lift_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(500ms);
+
+  // 16. 移动到红色木块上方，也就是绿色区域中心上方。
+  if (!plan_and_execute_pose(node, move_group, "move_blue_to_red_block_top_high", blue_place_high_pose)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 17. 垂直下降，把蓝色木块放到红色木块上面。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_down_to_red_block_top", blue_place_low_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 18. 松开夹爪，释放蓝色木块。
+  if (!send_gripper_goal(node, gripper_open, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1200ms);
+
+  // 19. 垂直向上远离蓝色/红色木块，避免碰倒。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_retreat_from_blue_stack", blue_place_high_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1500ms);
+
+  // =========================================================
+  // Purple block task
+  //
+  // 从这里开始新增紫色木块任务：
+  //   抓紫色木块
+  //   放到蓝色木块正上方
+  //   最后再回 upright
+  // =========================================================
+
+  const double purple_pick_flange_x =
+    purple_x
+    - std::cos(purple_pick_yaw) * purple_gripper_center_offset_x
+    + std::sin(purple_pick_yaw) * purple_gripper_center_offset_y;
+
+  const double purple_pick_flange_y =
+    purple_y
+    - std::sin(purple_pick_yaw) * purple_gripper_center_offset_x
+    - std::cos(purple_pick_yaw) * purple_gripper_center_offset_y;
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Purple block center: x=%.3f y=%.3f purple_yaw=%.3f",
+    purple_x,
+    purple_y,
+    purple_yaw
+  );
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Purple flange pick target: x=%.3f y=%.3f pick_yaw=%.3f",
+    purple_pick_flange_x,
+    purple_pick_flange_y,
+    purple_pick_yaw
+  );
+
+  RCLCPP_INFO(
+    node->get_logger(),
+    "Purple place target on blue block: x=%.3f y=%.3f place_low_z=%.3f",
+    place_x,
+    place_y,
+    purple_place_low_z
+  );
+
+  const auto purple_high_pose = make_pose(
+    purple_pick_flange_x,
+    purple_pick_flange_y,
+    purple_safe_high_z,
+    roll,
+    pitch,
+    purple_pick_yaw
+  );
+
+  const auto purple_low_pose = make_pose(
+    purple_pick_flange_x,
+    purple_pick_flange_y,
+    pick_low_z,
+    roll,
+    pitch,
+    purple_pick_yaw
+  );
+
+  const auto purple_lift_pose = make_pose(
+    purple_pick_flange_x,
+    purple_pick_flange_y,
+    purple_lift_z,
+    roll,
+    pitch,
+    purple_pick_yaw
+  );
+
+  const auto purple_place_high_pose = make_pose(
+    place_x,
+    place_y,
+    purple_place_high_z,
+    roll,
+    pitch,
+    place_yaw
+  );
+
+  const auto purple_place_low_pose = make_pose(
+    place_x,
+    place_y,
+    purple_place_low_z,
+    roll,
+    pitch,
+    place_yaw
+  );
+
+  // 20. 移动到紫色木块上方。
+  if (!plan_and_execute_pose(node, move_group, "move_to_purple_block_high", purple_high_pose)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 21. 到达紫色木块上方后打开夹爪。
+  if (!send_gripper_goal(node, gripper_open, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(2500ms);
+
+  // 22. 笛卡尔垂直下降到紫色木块两侧。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_down_to_purple_block_sides", purple_low_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 23. 第一段夹取紫色木块。
+  RCLCPP_INFO(node->get_logger(), "Pre-close gripper for purple block.");
+
+  if (!send_gripper_goal(node, gripper_pre_close, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1000ms);
+
+  // 24. 第二段轻夹紫色木块。
+  RCLCPP_INFO(node->get_logger(), "Final close gripper for purple block.");
+
+  if (!send_gripper_goal(node, gripper_close, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(2000ms);
+
+  // 25. 垂直向上抬起紫色木块。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_lift_purple_block", purple_lift_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(500ms);
+
+  // 26. 移动到蓝色木块上方，也就是堆叠中心上方。
+  if (!plan_and_execute_pose(node, move_group, "move_purple_to_blue_block_top_high", purple_place_high_pose)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 27. 垂直下降，把紫色木块放到蓝色木块上面。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_down_to_blue_block_top", purple_place_low_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(300ms);
+
+  // 28. 松开夹爪，释放紫色木块。
+  if (!send_gripper_goal(node, gripper_open, 2.0)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(1200ms);
+
+  // 29. 垂直向上远离紫/蓝/红木块，避免碰倒。
+  if (!execute_cartesian_to_pose(node, move_group, "cartesian_retreat_from_purple_stack", purple_place_high_pose, 0.90)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  std::this_thread::sleep_for(500ms);
+
+  // 30. 最后回到 upright 初始垂直状态。
+  if (!move_named_target(node, move_group, final_target)) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  RCLCPP_INFO(node->get_logger(), "Red + blue + purple stacking demo finished.");
+
+  rclcpp::shutdown();
+  return 0;
+}

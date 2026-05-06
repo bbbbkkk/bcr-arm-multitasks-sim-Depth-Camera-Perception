@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Load Robotiq 2F-85 macro from robotiq_description package -->
+  <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro"/>
+
+  <!--
+    Mount Robotiq 2F-85 gripper on BCR Arm.
+
+    V1 target:
+    - only add gripper visual/collision model
+    - do not add gripper ros2_control yet
+    - do not control open/close yet
+  -->
+  <xacro:macro name="robotiq_2f_85_mount" params="prefix parent_link xyz rpy">
+
+    <xacro:robotiq_gripper
+      name="robotiq_2f_85"
+      prefix="${prefix}"
+      parent="${parent_link}"
+      sim_gazebo="true"
+      include_ros2_control="false"
+      use_fake_hardware="false">
+
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+
+    </xacro:robotiq_gripper>
+
+  </xacro:macro>
+
+</robot>
