@@ -57,8 +57,16 @@ def generate_launch_description():
             description="Use simulation (Gazebo) clock if true",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "use_camera",
+            default_value="true",
+            description="Enable the external RGB-D camera in Gazebo",
+        )
+    )
 
     use_sim_time = LaunchConfiguration("use_sim_time")
+    use_camera = LaunchConfiguration("use_camera")
 
     # -------------------------------------------------------------------------
     # Gazebo launch
@@ -77,6 +85,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "use_sim_time": use_sim_time,
+            "use_camera": use_camera,
         }.items(),
     )
 

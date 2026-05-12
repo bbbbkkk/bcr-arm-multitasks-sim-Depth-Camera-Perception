@@ -39,13 +39,6 @@
   <!-- ================= Mechanical Arm ================= -->
   <xacro:bcr_arm_kinematics/>
 
-  <!-- ================= Sensors ================= -->
-  <xacro:if value="$(arg use_camera)">
-    <xacro:depth_camera
-      prefix="$(arg prefix)"
-      parent_link="flange"/>
-  </xacro:if>
-
   <!-- ================= End Effector ================= -->
   
 
@@ -54,6 +47,15 @@
     parent_link="flange"
     xyz="0 0 0.055"
     rpy="0 0 0"/>
+
+  <!-- ================= Sensors ================= -->
+  <xacro:if value="$(arg use_camera)">
+    <xacro:depth_camera
+      prefix="$(arg prefix)"
+      parent_link="world"
+      mount_xyz="0.45 0.00 1.95"
+      mount_rpy="0 1.6 0"/>
+  </xacro:if>
 
   <!-- ================= ROS2 Control ================= -->
   <xacro:if value="$(arg use_gazebo)">

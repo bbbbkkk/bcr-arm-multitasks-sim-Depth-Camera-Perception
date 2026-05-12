@@ -6,6 +6,7 @@ from launch.actions import (
     IncludeLaunchDescription,
     RegisterEventHandler,
 )
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
@@ -13,6 +14,7 @@ from launch.substitutions import (
     FindExecutable,
     LaunchConfiguration,
     PathJoinSubstitution,
+    PythonExpression,
 )
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -94,7 +96,7 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "use_camera",
-            default_value="false",
+            default_value="true",
             choices=["true", "false"],
             description="Whether to use camera in URDF (passed to XACRO)",
         )
@@ -104,6 +106,14 @@ def generate_launch_description():
             "use_sim_time",
             default_value="true",
             description="Use simulation (Gazebo) clock if true",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "server_only",
+            default_value="false",
+            choices=["true", "false"],
+            description="Run Gazebo in server-only mode without the GUI client",
         )
     )
     declared_arguments.append(
@@ -139,8 +149,38 @@ def generate_launch_description():
     gripper_type_lc = LaunchConfiguration("gripper_type")
     use_camera_lc = LaunchConfiguration("use_camera")
     use_sim_time_lc = LaunchConfiguration("use_sim_time")
+    server_only_lc = LaunchConfiguration("server_only")
     world_path_lc = LaunchConfiguration("world_path")
     ros2_controllers_path_lc = LaunchConfiguration("ros2_controllers_path")
+
+    camera_image_topic = PythonExpression(
+        [
+            "'/world/default/model/' + '",
+            robot_name_lc,
+            "' + '/link/' + '",
+            prefix_lc,
+            "' + 'camera_base_link/sensor/depth_camera/image'",
+        ]
+    )
+    camera_info_topic = PythonExpression(
+        [
+            "'/world/default/model/' + '",
+            robot_name_lc,
+            "' + '/link/' + '",
+            prefix_lc,
+            "' + 'camera_base_link/sensor/depth_camera/camera_info'",
+        ]
+    )
+    camera_info_bridge_arg = [camera_info_topic, "@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo"]
+    camera_depth_topic = PythonExpression(
+        [
+            "'/world/default/model/' + '",
+            robot_name_lc,
+            "' + '/link/' + '",
+            prefix_lc,
+            "' + 'camera_base_link/sensor/depth_camera/depth_image'",
+        ]
+    )
 
     # Get URDF via xacro - separate for spawning and robot_state_publisher
     robot_description_command = Command(
@@ -198,11 +238,24 @@ def generate_launch_description():
         parameters=[robot_description_param, {"use_sim_time": use_sim_time_lc}],
     )
 
-    gazebo_sim_node = IncludeLaunchDescription(
+    gazebo_sim_server_only_node = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare("ros_gz_sim"), "launch", "gz_sim.launch.py"])
+        ),
+        launch_arguments={"gz_args": ["-r -s -v 4 ", world_path_lc]}.items(),
+        condition=IfCondition(
+            PythonExpression(["'", server_only_lc, "' == 'true'"])
+        ),
+    )
+
+    gazebo_sim_with_gui_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("ros_gz_sim"), "launch", "gz_sim.launch.py"])
         ),
         launch_arguments={"gz_args": ["-r -v 4 ", world_path_lc]}.items(),
+        condition=IfCondition(
+            PythonExpression(["'", server_only_lc, "' != 'true'"])
+        ),
     )
 
     spawn_entity_node = Node(
@@ -242,6 +295,34 @@ def generate_launch_description():
         output="screen",
     )
 
+    image_bridge_node = Node(
+        package="ros_gz_image",
+        executable="image_bridge",
+        arguments=[
+            camera_image_topic,
+            camera_depth_topic,
+        ],
+        remappings=[
+            (camera_image_topic, "/camera/color/image_raw"),
+            (camera_depth_topic, "/camera/depth/image_raw"),
+        ],
+        output="screen",
+        condition=IfCondition(use_camera_lc),
+    )
+
+    camera_info_bridge_node = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=[
+            camera_info_bridge_arg,
+        ],
+        remappings=[
+            (camera_info_topic, "/camera/color/camera_info"),
+        ],
+        output="screen",
+        condition=IfCondition(use_camera_lc),
+    )
+
     delay_jsb_after_spawn = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=spawn_entity_node,
@@ -260,7 +341,10 @@ def generate_launch_description():
         declared_arguments
         + [
             robot_state_publisher_node,
-            gazebo_sim_node,
+            gazebo_sim_server_only_node,
+            gazebo_sim_with_gui_node,
+            image_bridge_node,
+            camera_info_bridge_node,
             spawn_entity_node,
             delay_jsb_after_spawn,
             delay_jtc_after_jsb,

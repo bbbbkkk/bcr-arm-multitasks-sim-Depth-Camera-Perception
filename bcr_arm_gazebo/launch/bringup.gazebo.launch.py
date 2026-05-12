@@ -10,7 +10,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -50,6 +50,7 @@ def generate_launch_description():
     use_rviz = LaunchConfiguration("use_rviz")
     use_camera = LaunchConfiguration("use_camera")
     use_gazebo = LaunchConfiguration("use_gazebo")
+    server_only = LaunchConfiguration("server_only")
     use_robot_state_pub = LaunchConfiguration("use_robot_state_pub")
     use_sim_time = LaunchConfiguration("use_sim_time")
     world_file = LaunchConfiguration("world_file")
@@ -62,6 +63,29 @@ def generate_launch_description():
     roll = LaunchConfiguration("roll")
     pitch = LaunchConfiguration("pitch")
     yaw = LaunchConfiguration("yaw")
+
+    camera_image_topic = PythonExpression(
+        [
+            "'/world/default/model/' + '",
+            robot_name,
+            "' + '/link/camera_base_link/sensor/depth_camera/image'",
+        ]
+    )
+    camera_info_topic = PythonExpression(
+        [
+            "'/world/default/model/' + '",
+            robot_name,
+            "' + '/link/camera_base_link/sensor/depth_camera/camera_info'",
+        ]
+    )
+    camera_info_bridge_arg = [camera_info_topic, "@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo"]
+    camera_depth_topic = PythonExpression(
+        [
+            "'/world/default/model/' + '",
+            robot_name,
+            "' + '/link/camera_base_link/sensor/depth_camera/depth_image'",
+        ]
+    )
 
     # Path to the world file
     world_path = PathJoinSubstitution([pkg_share_gazebo, gazebo_worlds_path_name, world_file])
@@ -94,6 +118,12 @@ def generate_launch_description():
 
     declare_use_gazebo_cmd = DeclareLaunchArgument(
         name="use_gazebo", default_value="true", description="Flag to enable Gazebo"
+    )
+
+    declare_server_only_cmd = DeclareLaunchArgument(
+        name="server_only",
+        default_value="false",
+        description="Run Gazebo in server-only mode without the GUI client",
     )
 
     declare_use_rviz_cmd = DeclareLaunchArgument(
@@ -164,6 +194,7 @@ def generate_launch_description():
             "use_camera": use_camera,
             "use_gazebo": use_gazebo,  # URDF needs to know if it's for Gazebo (e.g. for plugins)
             "use_sim_time": use_sim_time,
+            "jsp_gui": "false",
             "launch_rviz": "false",  # Prevent bcr_arm_description.launch.py from starting RViz
         }.items(),
         condition=IfCondition(use_robot_state_pub),
@@ -194,10 +225,20 @@ def generate_launch_description():
         condition=IfCondition(load_controllers),
     )
 
-    start_gazebo_cmd = IncludeLaunchDescription(
+    start_gazebo_server_only_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(pkg_ros_gz_sim, "launch", "gz_sim.launch.py")),
+        launch_arguments=[("gz_args", [" -r -s -v 4 ", world_path])],
+        condition=IfCondition(
+            PythonExpression(["'", use_gazebo, "' == 'true' and '", server_only, "' == 'true'"])
+        ),
+    )
+
+    start_gazebo_with_gui_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_ros_gz_sim, "launch", "gz_sim.launch.py")),
         launch_arguments=[("gz_args", [" -r -v 4 ", world_path])],
-        condition=IfCondition(use_gazebo),
+        condition=IfCondition(
+            PythonExpression(["'", use_gazebo, "' == 'true' and '", server_only, "' != 'true'"])
+        ),
     )
 
     start_gazebo_ros_bridge_cmd = Node(
@@ -219,15 +260,25 @@ def generate_launch_description():
         package="ros_gz_image",
         executable="image_bridge",
         arguments=[
-            # Bridge the actual camera topics from Gazebo
-            "/camera/image_raw",
-            "/camera/depth/image_raw",
-            "/camera/camera_info",
-            "/camera/depth/camera_info",
+            camera_image_topic,
+            camera_depth_topic,
         ],
         remappings=[
-            ("/camera/image_raw", "/camera/color/image_raw"),
-            ("/camera/camera_info", "/camera/color/camera_info"),
+            (camera_image_topic, "/camera/color/image_raw"),
+            (camera_depth_topic, "/camera/depth/image_raw"),
+        ],
+        output="screen",
+        condition=IfCondition(use_camera),
+    )
+
+    start_gazebo_ros_camera_info_bridge_cmd = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=[
+            camera_info_bridge_arg,
+        ],
+        remappings=[
+            (camera_info_topic, "/camera/color/camera_info"),
         ],
         output="screen",
         condition=IfCondition(use_camera),
@@ -293,6 +344,7 @@ def generate_launch_description():
     ld.add_action(declare_load_controllers_cmd)
     ld.add_action(declare_use_camera_cmd)
     ld.add_action(declare_use_gazebo_cmd)
+    ld.add_action(declare_server_only_cmd)
     ld.add_action(declare_use_rviz_cmd)
     ld.add_action(declare_rviz_config_file_cmd)
     ld.add_action(declare_use_robot_state_pub_cmd)
@@ -316,9 +368,11 @@ def generate_launch_description():
     ld.add_action(robot_state_publisher_cmd)  # Publishes /robot_description and TF
     ld.add_action(start_controller_manager_cmd)  # Starts ros2_control_node
     ld.add_action(load_controllers_cmd)  # Spawns controllers (JSA, JTC) after a delay
-    ld.add_action(start_gazebo_cmd)  # Starts Gazebo server and GUI
+    ld.add_action(start_gazebo_server_only_cmd)  # Starts Gazebo server only
+    ld.add_action(start_gazebo_with_gui_cmd)  # Starts Gazebo server and GUI
     ld.add_action(start_gazebo_ros_bridge_cmd)  # Bridges clock, joint_states, tf
     ld.add_action(start_gazebo_ros_image_bridge_cmd)  # Bridges camera topics
+    ld.add_action(start_gazebo_ros_camera_info_bridge_cmd)  # Bridges camera info
     ld.add_action(start_gazebo_ros_spawner_cmd)  # Spawns robot in Gazebo
 
     # Start visualization

@@ -30,8 +30,11 @@ install(
 
 install(
   PROGRAMS
+  scripts/block_pose_monitor_gui.py
   scripts/control_arm_cli.py
+  scripts/detect_block_poses.py
   scripts/test_arm_movement.py
+  scripts/test_block_pose_error.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -200,7 +200,6 @@
       </collision>
     </link>
 
-
     <!-- ========================================================= -->
     <!-- Left finger joint and link                                -->
     <!-- Positive position moves left finger outward along +Y       -->

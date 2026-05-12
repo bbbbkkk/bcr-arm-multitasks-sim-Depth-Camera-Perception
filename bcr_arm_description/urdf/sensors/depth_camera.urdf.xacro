@@ -1,13 +1,15 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:macro name="depth_camera" params="prefix parent_link namespace:=bcr_arm">
+  <xacro:macro
+    name="depth_camera"
+    params="prefix parent_link mount_xyz:='0.04 0 0.096125' mount_rpy:='0 0 0' namespace:=bcr_arm">
 
     <!-- Camera Mount and Link -->
     <joint name="${prefix}camera_mount_joint" type="fixed">
       <parent link="${parent_link}"/>
       <child link="${prefix}camera_base_link"/>
-      <origin xyz="0.04 0 0.096125" rpy="0 0 0"/>
+      <origin xyz="${mount_xyz}" rpy="${mount_rpy}"/>
     </joint>
 
     <link name="${prefix}camera_base_link">
@@ -48,9 +50,9 @@
 
     <link name="${prefix}camera_depth_optical_frame"/>
 
-    <!-- Ignition Gazebo Camera Plugin -->
+    <!-- Ignition Gazebo RGB-D Camera Plugin -->
     <gazebo reference="${prefix}camera_link">
-      <sensor type="camera" name="depth_camera">
+      <sensor type="rgbd_camera" name="depth_camera">
         <always_on>true</always_on>
         <update_rate>20</update_rate>
         <visualize>true</visualize>
